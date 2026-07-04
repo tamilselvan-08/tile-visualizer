@@ -13,8 +13,8 @@ wall) and a GPU to run it on.
 import cv2
 import numpy as np
 
-from geometry import order_corners
-from utils import logger
+from python_models.geometry import order_corners
+from python_models.utils import logger
 
 
 def depth_to_point_cloud(depth_map, K):
@@ -101,3 +101,40 @@ def estimate_surface_quad(mask_uint8, depth_map=None, K=None):
     rect = cv2.minAreaRect(largest)
     box = cv2.boxPoints(rect)
     return order_corners(box)
+
+
+def detect_architectural_edges(mask_uint8, image_bgr):
+    """
+    Phase 3: Multi-Plane Architecture
+    Detects vertical and horizontal lines in the original image that intersect
+    with the wall mask to identify natural architectural splits (corners, pillars, recesses).
+    """
+    gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray, 50, 150, apertureSize=3)
+    
+    # Mask edges to only consider those within or bounding the wall
+    masked_edges = cv2.bitwise_and(edges, mask_uint8)
+    
+    # Probabilistic Hough Transform for clean line segments
+    lines = cv2.HoughLinesP(masked_edges, 1, np.pi/180, threshold=100, minLineLength=100, maxLineGap=10)
+    
+    vertical_splits = []
+    if lines is not None:
+        for line in lines:
+            coords = line.flatten()
+            if len(coords) == 4:
+                x1, y1, x2, y2 = coords
+                # If the line is mostly vertical, it likely represents a wall corner/pillar
+                if abs(x1 - x2) < 20 and abs(y1 - y2) > 150:
+                    vertical_splits.append(int((x1 + x2) / 2))
+                
+    # Sort and filter close splits
+    vertical_splits = sorted(list(set(vertical_splits)))
+    filtered_splits = []
+    if vertical_splits:
+        filtered_splits.append(vertical_splits[0])
+        for split in vertical_splits[1:]:
+            if split - filtered_splits[-1] > 50: # Minimum distance between planes
+                filtered_splits.append(split)
+                
+    return filtered_splits

@@ -1,6 +1,6 @@
 import numpy as np
 import sys
-from utils import logger, cache
+from python_models.utils import logger, cache
 
 def load_sam_model(model_name="facebook/sam-vit-large", device="cuda"):
     """

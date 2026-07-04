@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from utils import logger, cache
+from python_models.utils import logger, cache
 
 def extract_illumination(room_bgr, mask_uint8):
     """

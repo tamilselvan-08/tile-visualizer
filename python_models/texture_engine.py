@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 import random
-from utils import logger, cache
+from python_models.utils import logger, cache
 
 def apply_random_variation(tile_bgr):
     """

@@ -36,8 +36,8 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from utils import logger, setup_logger
-from segmentation import load_segmentation_model, segment_room, get_surface_mask
+from python_models.utils import logger, setup_logger
+from python_models.segmentation import load_segmentation_model, segment_room, get_surface_mask
 
 
 
@@ -147,14 +147,14 @@ def tile_texture(texture_bgr, out_w, out_h, repeats_x=4, add_grout=True, grout_p
 def warp_texture_to_quad(texture_bgr, quad, out_shape):
     """Warps a (tiled) texture image into the given quadrilateral via homography."""
     out_h, out_w = out_shape
-from sam_refinement import load_sam_model, refine_mask_with_sam
-from depth import load_depth_model, estimate_depth
-from camera import get_camera_intrinsics
-from texture_engine import generate_adaptive_grout_color, tile_texture_physically
-from renderer import render_surface, get_feathered_mask
-from lighting import extract_illumination, apply_illumination_transfer
-from reflection import apply_reflections
-from occlusion import restore_occlusions
+from.sam_refinement import load_sam_model, refine_mask_with_sam
+from.depth import load_depth_model, estimate_depth
+from.camera import get_camera_intrinsics
+from.texture_engine import generate_adaptive_grout_color, tile_texture_physically
+from.renderer import render_surface, get_feathered_mask
+from.lighting import extract_illumination, apply_illumination_transfer
+from.reflection import apply_reflections
+from.occlusion import restore_occlusions
 
 
 # --------------------------------------------------------------------------

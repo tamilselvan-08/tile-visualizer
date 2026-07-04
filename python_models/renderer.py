@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
-from utils import logger, cache
-from plane_detection import estimate_surface_quad
+from python_models.utils import logger, cache
+from python_models.plane_detection import estimate_surface_quad
 
 def warp_texture_perspective(texture_bgr, quad, out_shape):
     """

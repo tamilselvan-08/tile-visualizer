@@ -1,7 +1,7 @@
 import sys
 import numpy as np
 from PIL import Image
-from utils import logger, cache
+from python_models.utils import logger, cache
 
 def load_depth_model(model_name="depth-anything/Depth-Anything-V2-Base-hf", device="cuda"):
     """Loads Depth Anything V2 for dense depth estimation."""

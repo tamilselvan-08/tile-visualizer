@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
-from geometry import line_intersection
-from utils import logger, cache
+from python_models.geometry import line_intersection
+from python_models.utils import logger, cache
 
 def estimate_vanishing_point(image_bgr, mask_uint8):
     """

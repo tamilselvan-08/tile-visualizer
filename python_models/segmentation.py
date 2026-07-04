@@ -12,7 +12,7 @@ import sys
 import cv2
 import numpy as np
 
-from utils import cache, logger
+from python_models.utils import cache, logger
 
 # ADE20K indices (0-indexed, matches HF's post_process_semantic_segmentation output)
 ADE20K_CLASSES = {
@@ -57,6 +57,8 @@ OCCLUSION_CLASSES = {
     43,   # signboard
     144,  # bulletin board
     148,  # clock  <- was MISSING entirely; this is the wall-clock leak
+    83,   # wooden beam (Step 7)
+    122,  # light switch / switch board (Step 8)
 }
 
 # Fast, CPU-friendly by default. Mask2Former is more accurate but 10-30x
@@ -170,36 +172,22 @@ def refine_edges_with_image(mask_uint8, guide_bgr, radius=6, eps=0.01):
 
 def clean_mask(mask_bool, guide_bgr=None, min_area_ratio=0.01, max_hole_area_ratio=0.0015):
     """
-    - kills salt-and-pepper misclassification noise (median blur)
-    - smooths jagged boundaries (gaussian blur + rethreshold)
-    - (optionally) snaps edges onto the real photo via a guided filter
-    - keeps only components above a minimum area
-    - fills only SMALL internal holes; large holes (windows, furniture,
-      pictures) are real exclusions and stay excluded
-    Returns a uint8 mask (0 / 255).
+    Advanced Mask Refinement Pipeline:
+    Connected Components -> Guided Filter -> Distance Transform -> Edge Snapping -> Final Mask
     """
     mask = (mask_bool.astype(np.uint8)) * 255
     h, w = mask.shape
     min_area = min_area_ratio * h * w
     max_hole_area = max_hole_area_ratio * h * w
 
-    mask = cv2.medianBlur(mask, 9)
-    mask = cv2.GaussianBlur(mask, (0, 0), sigmaX=4)
-    _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
-
-    if guide_bgr is not None:
-        mask = refine_edges_with_image(mask, guide_bgr)
-
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
-
+    # 1. Connected Components (Filtering small noise)
     n_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
     cleaned = np.zeros_like(mask)
     for i in range(1, n_labels):
         if stats[i, cv2.CC_STAT_AREA] >= min_area:
             cleaned[labels == i] = 255
-
+            
+    # 2. Fill small holes
     inv = cv2.bitwise_not(cleaned)
     n_holes, hole_labels, hole_stats, _ = cv2.connectedComponentsWithStats(inv, connectivity=8)
     filled = cleaned.copy()
@@ -211,7 +199,24 @@ def clean_mask(mask_bool, guide_bgr=None, min_area_ratio=0.01, max_hole_area_rat
         if area <= max_hole_area:
             filled[hole_labels == i] = 255
 
-    return filled
+    # 3. Distance Transform & Edge Snapping
+    if guide_bgr is not None:
+        # Distance transform to find sure foreground and background
+        dist_transform = cv2.distanceTransform(filled, cv2.DIST_L2, 5)
+        _, sure_fg = cv2.threshold(dist_transform, 0.2 * dist_transform.max(), 255, 0)
+        
+        # Snap edges using the image guide
+        filled = refine_edges_with_image(filled, guide_bgr)
+
+    # 4. Contour Simplification & Polygon Refinement
+    contours, _ = cv2.findContours(filled, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    refined = np.zeros_like(filled)
+    for cnt in contours:
+        epsilon = 0.005 * cv2.arcLength(cnt, True)
+        approx = cv2.approxPolyDP(cnt, epsilon, True)
+        cv2.drawContours(refined, [approx], -1, 255, -1)
+
+    return refined
 
 
 def get_surface_mask(label_map, surface_name, guide_bgr=None, detect_frames=True):
@@ -240,7 +245,7 @@ def get_surface_mask(label_map, surface_name, guide_bgr=None, detect_frames=True
     cleaned[protected_mask > 0] = 0
 
     if detect_frames and guide_bgr is not None:
-        from obstacle_detection import detect_frame_like_objects
+        from.obstacle_detection import detect_frame_like_objects
         obstacles = detect_frame_like_objects(guide_bgr, cleaned)
         cleaned[obstacles > 0] = 0
 

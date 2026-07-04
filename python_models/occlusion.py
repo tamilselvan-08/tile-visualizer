@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from segmentation import get_protected_mask
+from python_models.segmentation import get_protected_mask
 
 def restore_occlusions(room_bgr, rendered_bgr, label_map):
     """
