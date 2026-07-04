@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Room Tile Visualizer — POC</title>
+<style>
+  :root{
+    --bg: #0f1115;
+    --panel: #161922;
+    --panel-2: #1e222d;
+    --border: #2a2f3d;
+    --text: #e8eaef;
+    --text-dim: #8b90a0;
+    --accent: #5b8def;
+    --accent-2: #37c99b;
+    --danger: #e15c5c;
+    --radius: 10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .app{display:flex;flex-direction:column;height:100vh;}
+
+  /* top bar */
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:12px 20px;border-bottom:1px solid var(--border);background:var(--panel);
+    flex-wrap:wrap;gap:10px;
+  }
+  .brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:15px;letter-spacing:.2px;}
+  .brand .dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent-2));}
+  .topbar .actions{display:flex;gap:8px;flex-wrap:wrap;}
+  button{
+    font-family:inherit;font-size:13px;font-weight:500;color:var(--text);
+    background:var(--panel-2);border:1px solid var(--border);border-radius:8px;
+    padding:8px 14px;cursor:pointer;transition:.15s ease;
+  }
+  button:hover{border-color:var(--accent);color:#fff;}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+  button.primary:hover{filter:brightness(1.1);}
+  button.ghost{background:transparent;}
+  button.danger-outline{border-color:var(--danger);color:var(--danger);background:transparent;}
+  button.danger-outline:hover{background:var(--danger);color:#fff;}
+  button.small{padding:5px 10px;font-size:12px;}
+
+  /* layout */
+  .body{display:flex;flex:1;min-height:0;}
+  .sidebar{
+    width:280px;flex-shrink:0;border-right:1px solid var(--border);background:var(--panel);
+    padding:16px;overflow-y:auto;
+  }
+  .sidebar h3{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-dim);
+    margin:18px 0 8px;font-weight:600;}
+  .sidebar h3:first-child{margin-top:0;}
+  .drop{
+    border:1.5px dashed var(--border);border-radius:var(--radius);padding:16px;text-align:center;
+    cursor:pointer;transition:.15s;font-size:12.5px;color:var(--text-dim);
+  }
+  .drop:hover{border-color:var(--accent);color:var(--text);}
+  .drop.has-file{border-style:solid;border-color:var(--accent-2);color:var(--text);}
+  input[type=file]{display:none;}
+
+  .tile-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;}
+  .tile-thumb{
+    position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;cursor:pointer;
+    border:2px solid transparent;background:var(--panel-2);
+  }
+  .tile-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+  .tile-thumb.active{border-color:var(--accent);}
+  .tile-thumb .check{
+    position:absolute;top:4px;right:4px;width:16px;height:16px;border-radius:50%;
+    background:var(--accent);color:#fff;font-size:11px;display:none;align-items:center;justify-content:center;
+  }
+  .tile-thumb.active .check{display:flex;}
+
+  .slider-row{margin-top:12px;font-size:12.5px;color:var(--text-dim);}
+  .slider-row .val{color:var(--text);font-weight:600;}
+  input[type=range]{width:100%;accent-color:var(--accent);margin-top:4px;}
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;margin-top:12px;font-size:12.5px;color:var(--text-dim);}
+  input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;}
+
+  /* main canvas area */
+  .main{flex:1;display:flex;flex-direction:column;min-width:0;background:
+      radial-gradient(circle at 50% 0%, #171a22 0%, #0f1115 60%);}
+  .canvas-toolbar{
+    display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);
+    flex-wrap:wrap;background:var(--panel);
+  }
+  .mark-btn{position:relative;}
+  .mark-btn.armed{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .mark-btn .tag-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px;}
+  .tag-wall .tag-dot{background:#5b8def;}
+  .tag-floor .tag-dot{background:#c99b5b;}
+  .tag-ceiling .tag-dot{background:#9b7fe8;}
+  .hint{font-size:12px;color:var(--text-dim);margin-left:auto;}
+
+  .canvas-wrap{
+    position:relative;box-shadow:0 20px 60px rgba(0,0,0,.5);border-radius:6px;overflow:hidden;background:#000;
+    max-width:100%;max-height:100%;
+  }
+  .canvas-wrap canvas{display:block;}
+  #overlayCanvas{position:absolute;top:0;left:0;cursor:crosshair;}
+  .empty-state{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    height:100%;color:var(--text-dim);text-align:center;padding:40px;gap:10px;
+  }
+  .empty-state .big{font-size:15px;color:var(--text);}
+
+  .surfaces-list{margin-top:8px;display:flex;flex-direction:column;gap:8px;}
+  .surface-row{
+    display:flex;align-items:center;justify-content:space-between;
+    background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12.5px;
+  }
+  .surface-row .label{display:flex;align-items:center;gap:8px;}
+  .surface-row .swatch{width:22px;height:22px;border-radius:5px;object-fit:cover;}
+  .surface-row button{padding:4px 8px;font-size:11px;}
+  .surface-row .label{cursor:pointer;}
+  .surface-row.selected{border-color:var(--accent);background:rgba(91,141,239,.12);}
+  #brushEraseBtn.active{background:var(--danger);border-color:var(--danger);color:#fff;}
+  #brushRestoreBtn.active{background:var(--accent-2);border-color:var(--accent-2);color:#fff;}
+  #styleTileBtn.active,#stylePaintBtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+
+  ::-webkit-scrollbar{width:8px;}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div class="brand"><span class="dot"></span> Room Tile Visualizer <span style="color:var(--text-dim);font-weight:400;font-size:12px;">— POC</span></div>
+    <div class="actions">
+      <button id="resetAllBtn" class="ghost">Reset all</button>
+      <button id="downloadBtn" class="primary" disabled>Download result</button>
+    </div>
+  </div>
+
+  <div class="body">
+
+    <div class="sidebar">
+      <h3>1 · Room photo</h3>
+      <div class="drop" id="roomDrop">Click or drop a room photo</div>
+      <input type="file" id="roomInput" accept="image/*">
+
+      <h3>2 · Tiles / textures</h3>
+      <div class="drop" id="tileDrop">Click or drop tile images<br>(upload as many as you like)</div>
+      <input type="file" id="tileInput" accept="image/*" multiple>
+      <div class="tile-grid" id="tileGrid"></div>
+
+      <h3>3 · Look &amp; feel</h3>
+      <div class="toggle-row" style="margin-top:0;">
+        <span>Style</span>
+        <div style="display:flex;gap:6px;">
+          <button id="styleTileBtn" class="small">🧱 Tile</button>
+          <button id="stylePaintBtn" class="small">🎨 Paint/Sticker</button>
+        </div>
+      </div>
+      <div id="tileSizeControls">
+        <div class="slider-row" style="display:flex;gap:8px;align-items:flex-end;margin-top:12px;">
+          <div style="flex:1;">
+            <div>Tile size (cm)</div>
+            <input type="number" id="tileSizeCm" value="60" min="5" max="200" step="5"
+              style="width:100%;margin-top:4px;background:var(--panel-2);border:1px solid var(--border);
+              color:var(--text);border-radius:6px;padding:6px 8px;font-size:13px;">
+          </div>
+          <div style="flex:1;">
+            <div>Surface width (cm)</div>
+            <input type="number" id="surfaceWidthCm" value="300" min="30" max="2000" step="10"
+              style="width:100%;margin-top:4px;background:var(--panel-2);border:1px solid var(--border);
+              color:var(--text);border-radius:6px;padding:6px 8px;font-size:13px;">
+          </div>
+        </div>
+        <div style="font-size:11.5px;color:var(--text-dim);margin-top:6px;">
+          ≈ <span id="tilesAcrossVal">5</span> tiles across (no exact-scale reference in the photo, so this is an estimate — adjust "surface width" to roughly match the real wall/floor width for a more realistic size)
+        </div>
+        <input type="hidden" id="repeatsSlider" value="5">
+        <input type="hidden" id="repeatsVal" value="5">
+      </div>
+      <div class="slider-row">
+        Lighting realism <span class="val" id="blendVal">0.8</span>
+        <input type="range" id="blendSlider" min="0" max="100" value="80">
+      </div>
+      <div class="toggle-row" id="groutRow">
+        Grout lines
+        <input type="checkbox" id="groutToggle" checked>
+      </div>
+
+      <h3>Marked surfaces</h3>
+      <div class="surfaces-list" id="surfacesList">
+        <div style="color:var(--text-dim);font-size:12.5px;">None yet — upload a room photo, pick a tile, then mark a surface.</div>
+      </div>
+
+      <h3>4 · Touch-up (fix AI mistakes)</h3>
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:8px;">
+        Select a surface above, then paint to fix spots the AI got wrong — e.g. a frame the tile bled onto.
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button id="brushEraseBtn" class="small" style="flex:1;">🧽 Remove tile</button>
+        <button id="brushRestoreBtn" class="small" style="flex:1;">🖌️ Add tile</button>
+      </div>
+      <div class="slider-row">
+        Brush size <span class="val" id="brushSizeVal">24</span>
+        <input type="range" id="brushSizeSlider" min="6" max="80" value="24">
+      </div>
+    </div>
+
+    <div class="main">
+      <div class="canvas-toolbar">
+        <button id="autoDetectBtn" class="primary">✨ Auto-detect (AI)</button>
+        <span style="width:1px;height:22px;background:var(--border);"></span>
+        <button class="mark-btn tag-wall" id="markWallBtn"><span class="tag-dot"></span>Mark wall</button>
+        <button class="mark-btn tag-floor" id="markFloorBtn"><span class="tag-dot"></span>Mark floor</button>
+        <button class="mark-btn tag-ceiling" id="markCeilingBtn"><span class="tag-dot"></span>Mark ceiling</button>
+        <button id="undoPointBtn" class="ghost" style="display:none;">Undo point</button>
+        <button id="cancelMarkBtn" class="ghost" style="display:none;">Cancel</button>
+        <div class="hint" id="hintText">Upload a room photo to begin</div>
+      </div>
+
+      <div id="canvasStage" style="flex:1;display:flex;align-items:center;justify-content:center;padding:16px;min-height:0;overflow:hidden;">
+        <div class="canvas-wrap" id="canvasWrap" style="display:none;">
+          <canvas id="baseCanvas"></canvas>
+          <canvas id="overlayCanvas"></canvas>
+        </div>
+        <div class="empty-state" id="emptyState">
+          <div class="big">No room photo yet</div>
+          <div>Upload a photo on the left, then a tile texture, then click "Mark wall" or "Mark floor" and click 4 corners on the photo.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* =========================================================================
+   GEOMETRY CORE  (homography solver, sampling, point-in-polygon)
+   ========================================================================= */
+function solveLinear(A, b) {
+  const n = A.length;
+  const M = A.map((row, i) => [...row, b[i]]);
+  for (let col = 0; col < n; col++) {
+    let pivot = col;
+    for (let r = col + 1; r < n; r++) if (Math.abs(M[r][col]) > Math.abs(M[pivot][col])) pivot = r;
+    [M[col], M[pivot]] = [M[pivot], M[col]];
+    const pv = M[col][col];
+    if (Math.abs(pv) < 1e-12) continue;
+    for (let c = col; c <= n; c++) M[col][c] /= pv;
+    for (let r = 0; r < n; r++) {
+      if (r === col) continue;
+      const factor = M[r][col];
+      for (let c = col; c <= n; c++) M[r][c] -= factor * M[col][c];
+    }
+  }
+  return M.map(row => row[n]);
+}
+
+function getHomography(srcPts, dstPts) {
+  const A = [], b = [];
+  for (let i = 0; i < 4; i++) {
+    const { x: sx, y: sy } = srcPts[i];
+    const { x: dx, y: dy } = dstPts[i];
+    A.push([sx, sy, 1, 0, 0, 0, -dx * sx, -dx * sy]); b.push(dx);
+    A.push([0, 0, 0, sx, sy, 1, -dy * sx, -dy * sy]); b.push(dy);
+  }
+  const h = solveLinear(A, b);
+  return [[h[0],h[1],h[2]],[h[3],h[4],h[5]],[h[6],h[7],1]];
+}
+
+function applyHomography(H, x, y) {
+  const X = H[0][0]*x + H[0][1]*y + H[0][2];
+  const Y = H[1][0]*x + H[1][1]*y + H[1][2];
+  const W = H[2][0]*x + H[2][1]*y + H[2][2];
+  return { u: X / W, v: Y / W };
+}
+
+function orderCorners(pts) {
+  const sums = pts.map(p => p.x + p.y);
+  const diffs = pts.map(p => p.y - p.x);
+  const tl = pts[sums.indexOf(Math.min(...sums))];
+  const br = pts[sums.indexOf(Math.max(...sums))];
+  const tr = pts[diffs.indexOf(Math.min(...diffs))];
+  const bl = pts[diffs.indexOf(Math.max(...diffs))];
+  return [tl, tr, br, bl];
+}
+
+function pointInPolygon(px, py, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
+    const intersect = ((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function luminance(r, g, b) { return 0.299*r + 0.587*g + 0.114*b; }
+
+function bilinearSample(data, w, h, u, v) {
+  u = Math.max(0, Math.min(w - 1.001, u));
+  v = Math.max(0, Math.min(h - 1.001, v));
+  const x0 = Math.floor(u), y0 = Math.floor(v);
+  const x1 = Math.min(x0 + 1, w - 1), y1 = Math.min(y0 + 1, h - 1);
+  const fx = u - x0, fy = v - y0;
+  const idx = (x, y) => (y * w + x) * 4;
+  const p00 = idx(x0,y0), p10 = idx(x1,y0), p01 = idx(x0,y1), p11 = idx(x1,y1);
+  const out = [0,0,0];
+  for (let c = 0; c < 3; c++) {
+    const top = data[p00+c]*(1-fx) + data[p10+c]*fx;
+    const bot = data[p01+c]*(1-fx) + data[p11+c]*fx;
+    out[c] = top*(1-fy) + bot*fy;
+  }
+  return out;
+}
+
+/* =========================================================================
+   TILE CANVAS BUILDER
+   ========================================================================= */
+function buildTiledCanvas(img, targetW, targetH, repeats, groutOn) {
+  const groutPx = groutOn ? 3 : 0;
+  const tileW = Math.max(24, Math.floor(targetW / repeats));
+  const tileH = Math.max(24, Math.floor(tileW * img.naturalHeight / img.naturalWidth));
+  const cellW = tileW + groutPx * 2, cellH = tileH + groutPx * 2;
+  const repsX = Math.max(1, Math.ceil(targetW / cellW) + 1);
+  const repsY = Math.max(1, Math.ceil(targetH / cellH) + 1);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = repsX * cellW;
+  canvas.height = repsY * cellH;
+  const ctx = canvas.getContext('2d');
+  if (groutOn) { ctx.fillStyle = '#c7c7c7'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+
+  // Mirrored tiling: with no grout (paint/wallpaper mode), alternate repeats
+  // are flipped so adjacent edges mirror instead of repeating identically —
+  // removes the harsh "wallpaper grid" seam look for most textures (marble,
+  // wood grain, fabric), since mirrored edges match up naturally at the
+  // boundary. Skipped when grout is on: real tiles ARE identical repeating
+  // units with a visible grout line, so that's the correct look there.
+  const mirror = !groutOn;
+
+  for (let j = 0; j < repsY; j++) {
+    for (let i = 0; i < repsX; i++) {
+      const flipX = mirror && (i % 2 === 1);
+      const flipY = mirror && (j % 2 === 1);
+      const cx = i * cellW + groutPx;
+      const cy = j * cellH + groutPx;
+      if (flipX || flipY) {
+        ctx.save();
+        ctx.translate(cx + (flipX ? tileW : 0), cy + (flipY ? tileH : 0));
+        ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+        ctx.drawImage(img, 0, 0, tileW, tileH);
+        ctx.restore();
+      } else {
+        ctx.drawImage(img, cx, cy, tileW, tileH);
+      }
+    }
+  }
+  return canvas;
+}
+
+/* =========================================================================
+   APP STATE
+   ========================================================================= */
+const state = {
+  roomImg: null,
+  originalImageData: null,
+  width: 0, height: 0,
+  tiles: [],           // {id, img}
+  activeTileId: null,
+  surfaces: {},         // wall/floor/ceiling -> {points:[{x,y}x4], tileId, repeats, grout, blend}
+  selectedSurface: null, // which surface a tile click should instantly apply to
+  armed: null,          // 'wall' | 'floor' | 'ceiling' | null
+  tempPoints: [],
+  dragging: null,        // {surface, index}
+  brushMode: null,       // null | 'erase' | 'restore'
+  painting: false
+};
+
+const SURFACE_NAMES = ['wall', 'floor', 'ceiling'];
+const SURFACE_COLORS = { wall: '#5b8def', floor: '#c99b5b', ceiling: '#9b7fe8' };
+
+const baseCanvas = document.getElementById('baseCanvas');
+const overlayCanvas = document.getElementById('overlayCanvas');
+const baseCtx = baseCanvas.getContext('2d');
+const overlayCtx = overlayCanvas.getContext('2d');
+const canvasWrap = document.getElementById('canvasWrap');
+const canvasStage = document.getElementById('canvasStage');
+const emptyState = document.getElementById('emptyState');
+const hintText = document.getElementById('hintText');
+
+// Explicit pixel-based sizing instead of CSS max-height:100%, which silently
+// fails here (percentage heights don't resolve through an auto-height
+// wrapper — a well-known CSS quirk). This guarantees the full photo is
+// always visible, scaled to fit, regardless of its aspect ratio.
+function fitCanvasToStage() {
+  if (!state.width || !state.height) return;
+  const pad = 32; // matches the stage's own padding
+  const availW = Math.max(50, canvasStage.clientWidth - pad);
+  const availH = Math.max(50, canvasStage.clientHeight - pad);
+  const scale = Math.min(availW / state.width, availH / state.height);
+  const dispW = Math.round(state.width * scale);
+  const dispH = Math.round(state.height * scale);
+  canvasWrap.style.width = dispW + 'px';
+  canvasWrap.style.height = dispH + 'px';
+  baseCanvas.style.width = dispW + 'px';
+  baseCanvas.style.height = dispH + 'px';
+  overlayCanvas.style.width = dispW + 'px';
+  overlayCanvas.style.height = dispH + 'px';
+}
+window.addEventListener('resize', fitCanvasToStage);
+
+/* ---------- room upload ---------- */
+const roomDrop = document.getElementById('roomDrop');
+const roomInput = document.getElementById('roomInput');
+roomDrop.onclick = () => roomInput.click();
+roomInput.onchange = e => { if (e.target.files[0]) loadRoomImage(e.target.files[0]); };
+['dragover','drop'].forEach(ev => roomDrop.addEventListener(ev, e => e.preventDefault()));
+roomDrop.addEventListener('drop', e => { if (e.dataTransfer.files[0]) loadRoomImage(e.dataTransfer.files[0]); });
+
+function loadRoomImage(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX_DIM = 1400;
+      let w = img.naturalWidth, h = img.naturalHeight;
+      const scale = Math.min(1, MAX_DIM / Math.max(w, h));
+      w = Math.round(w * scale); h = Math.round(h * scale);
+
+      state.roomImg = img; state.width = w; state.height = h;
+      baseCanvas.width = overlayCanvas.width = w;
+      baseCanvas.height = overlayCanvas.height = h;
+      baseCtx.drawImage(img, 0, 0, w, h);
+      state.originalImageData = baseCtx.getImageData(0, 0, w, h);
+
+      state.surfaces = {}; state.armed = null; state.tempPoints = []; state.selectedSurface = null;
+      roomDrop.classList.add('has-file'); roomDrop.textContent = file.name;
+      canvasWrap.style.display = 'block'; emptyState.style.display = 'none';
+      fitCanvasToStage();
+      updateHint(); renderSurfacesList(); render();
+
+      // try to auto-detect right away; fails silently if server.py isn't running yet
+      detectSurfaces({ silent: true });
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ---------- tile upload ---------- */
+const tileDrop = document.getElementById('tileDrop');
+const tileInput = document.getElementById('tileInput');
+const tileGrid = document.getElementById('tileGrid');
+tileDrop.onclick = () => tileInput.click();
+tileInput.onchange = e => loadTileFiles(e.target.files);
+['dragover','drop'].forEach(ev => tileDrop.addEventListener(ev, e => e.preventDefault()));
+tileDrop.addEventListener('drop', e => loadTileFiles(e.dataTransfer.files));
+
+function loadTileFiles(files) {
+  [...files].forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const id = 't' + Date.now() + Math.random().toString(36).slice(2, 6);
+        state.tiles.push({ id, img });
+        if (!state.activeTileId) state.activeTileId = id;
+        tileDrop.classList.add('has-file');
+        renderTileGrid(); updateHint();
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderTileGrid() {
+  tileGrid.innerHTML = '';
+  state.tiles.forEach(t => {
+    const div = document.createElement('div');
+    div.className = 'tile-thumb' + (t.id === state.activeTileId ? ' active' : '');
+    div.innerHTML = `<img src="${t.img.src}"><span class="check">✓</span>`;
+    div.onclick = () => {
+      state.activeTileId = t.id;
+      renderTileGrid();
+      // instant swap: if a surface is already selected (already has known
+      // geometry/mask), repaint it with the new tile AND the current
+      // slider settings — density/grout/lighting should follow whatever
+      // you last set, not stay frozen at whatever they were when the
+      // surface was first created.
+      if (state.selectedSurface && state.surfaces[state.selectedSurface]) {
+        const s = state.surfaces[state.selectedSurface];
+        s.tileId = t.id;
+        s.repeats = parseInt(repeatsSlider.value, 10);
+        s.grout = groutToggle.checked;
+        s.blend = parseInt(blendSlider.value, 10) / 100;
+        render();
+      }
+    };
+    tileGrid.appendChild(div);
+  });
+}
+
+function selectSurface(name) {
+  const turningOn = state.selectedSurface !== name;
+  state.selectedSurface = turningOn ? name : null;
+
+  if (turningOn && state.activeTileId && state.surfaces[name] && !state.surfaces[name].tileId) {
+    state.surfaces[name].tileId = state.activeTileId;
+    render();
+  }
+  if (turningOn && state.surfaces[name]) syncStyleControlsToSurface(name);
+  renderSurfacesList();
+  drawOverlay();
+}
+
+/* ---------- controls ---------- */
+const repeatsSlider = document.getElementById('repeatsSlider');
+const repeatsVal = document.getElementById('repeatsVal');
+const tileSizeCm = document.getElementById('tileSizeCm');
+const surfaceWidthCm = document.getElementById('surfaceWidthCm');
+const tilesAcrossVal = document.getElementById('tilesAcrossVal');
+const tileSizeControls = document.getElementById('tileSizeControls');
+const groutRow = document.getElementById('groutRow');
+const styleTileBtn = document.getElementById('styleTileBtn');
+const stylePaintBtn = document.getElementById('stylePaintBtn');
+
+function applyLiveSettingsToSelected() {
+  if (state.selectedSurface && state.surfaces[state.selectedSurface]) {
+    const s = state.surfaces[state.selectedSurface];
+    s.repeats = parseInt(repeatsSlider.value, 10);
+    s.grout = groutToggle.checked;
+    s.blend = parseInt(blendSlider.value, 10) / 100;
+    render();
+  }
+}
+
+function computeRepeatsFromSize() {
+  const tsize = Math.max(1, parseFloat(tileSizeCm.value) || 60);
+  const swidth = Math.max(1, parseFloat(surfaceWidthCm.value) || 300);
+  const repeats = Math.min(20, Math.max(1, Math.round(swidth / tsize)));
+  repeatsSlider.value = repeats;
+  repeatsVal.value = repeats;
+  tilesAcrossVal.textContent = repeats;
+  applyLiveSettingsToSelected();
+}
+tileSizeCm.oninput = computeRepeatsFromSize;
+surfaceWidthCm.oninput = computeRepeatsFromSize;
+
+function setStyleUI(styleName) {
+  styleTileBtn.classList.toggle('active', styleName === 'tile');
+  stylePaintBtn.classList.toggle('active', styleName === 'paint');
+  tileSizeControls.style.display = styleName === 'paint' ? 'none' : 'block';
+  groutRow.style.display = styleName === 'paint' ? 'none' : 'flex';
+}
+
+styleTileBtn.onclick = () => {
+  groutToggle.checked = true;
+  setStyleUI('tile');
+  computeRepeatsFromSize(); // also calls applyLiveSettingsToSelected
+};
+stylePaintBtn.onclick = () => {
+  groutToggle.checked = false;
+  repeatsSlider.value = 1;
+  setStyleUI('paint');
+  applyLiveSettingsToSelected();
+};
+
+// Sensible defaults per surface type: walls are usually painted/wallpapered
+// (smooth, no grid) by default; floors/ceilings default to a tiled look
+// since that's the far more common real-world case.
+function getDefaultStyleFor(name) {
+  if (name === 'wall') return { repeats: 1, grout: false, styleName: 'paint' };
+  const tsize = Math.max(1, parseFloat(tileSizeCm.value) || 60);
+  const swidth = Math.max(1, parseFloat(surfaceWidthCm.value) || 300);
+  const repeats = Math.min(20, Math.max(1, Math.round(swidth / tsize)));
+  return { repeats, grout: true, styleName: 'tile' };
+}
+
+// keep the sidebar controls in sync with whichever surface is selected,
+// so they reflect that surface's real settings instead of stale state
+function syncStyleControlsToSurface(name) {
+  const s = state.surfaces[name];
+  if (!s) return;
+  groutToggle.checked = s.grout;
+  repeatsSlider.value = s.repeats;
+  repeatsVal.value = s.repeats;
+  tilesAcrossVal.textContent = s.repeats;
+  blendSlider.value = Math.round(s.blend * 100);
+  blendVal.textContent = s.blend.toFixed(2);
+  setStyleUI(s.grout ? 'tile' : 'paint');
+}
+
+const blendSlider = document.getElementById('blendSlider');
+const blendVal = document.getElementById('blendVal');
+blendSlider.oninput = () => { blendVal.textContent = (blendSlider.value/100).toFixed(2); applyLiveSettingsToSelected(); };
+
+const groutToggle = document.getElementById('groutToggle');
+groutToggle.onchange = applyLiveSettingsToSelected;
+setStyleUI('tile'); // sensible initial display before any surface exists
+
+/* ---------- marking flow ---------- */
+const markBtns = {
+  wall: document.getElementById('markWallBtn'),
+  floor: document.getElementById('markFloorBtn'),
+  ceiling: document.getElementById('markCeilingBtn'),
+};
+const undoPointBtn = document.getElementById('undoPointBtn');
+const cancelMarkBtn = document.getElementById('cancelMarkBtn');
+
+SURFACE_NAMES.forEach(name => {
+  markBtns[name].onclick = () => {
+    if (!state.roomImg) { alert('Upload a room photo first.'); return; }
+    if (!state.activeTileId) { alert('Upload and select a tile texture first.'); return; }
+    armSurface(name);
+  };
+});
+
+function armSurface(name) {
+  state.armed = name; state.tempPoints = [];
+  Object.values(markBtns).forEach(b => b.classList.remove('armed'));
+  markBtns[name].classList.add('armed');
+  undoPointBtn.style.display = 'inline-block';
+  cancelMarkBtn.style.display = 'inline-block';
+  updateHint(); drawOverlay();
+}
+
+function disarm() {
+  state.armed = null; state.tempPoints = [];
+  Object.values(markBtns).forEach(b => b.classList.remove('armed'));
+  undoPointBtn.style.display = 'none';
+  cancelMarkBtn.style.display = 'none';
+  updateHint(); drawOverlay();
+}
+
+cancelMarkBtn.onclick = disarm;
+undoPointBtn.onclick = () => { state.tempPoints.pop(); drawOverlay(); };
+
+function updateHint() {
+  if (!state.roomImg) { hintText.textContent = 'Upload a room photo to begin'; return; }
+  if (state.armed) {
+    hintText.textContent = `Click the ${4 - state.tempPoints.length} remaining corner(s) of the ${state.armed} — click in order around the shape`;
+    return;
+  }
+  const anyDetected = SURFACE_NAMES.some(n => state.surfaces[n]);
+  if (!state.tiles.length) {
+    hintText.textContent = anyDetected
+      ? 'Surfaces detected — now upload a tile, then click a surface tag to apply it'
+      : 'Now upload a tile / texture image';
+    return;
+  }
+  if (anyDetected) {
+    hintText.textContent = 'Click a surface tag on the photo, then click a tile to apply it';
+  } else {
+    hintText.textContent = 'Pick a tile on the left, then "Mark wall / floor / ceiling" and click its 4 corners';
+  }
+}
+
+/* ---------- canvas coordinate helpers ---------- */
+function toCanvasCoords(evt) {
+  const rect = overlayCanvas.getBoundingClientRect();
+  const scaleX = overlayCanvas.width / rect.width;
+  const scaleY = overlayCanvas.height / rect.height;
+  return { x: (evt.clientX - rect.left) * scaleX, y: (evt.clientY - rect.top) * scaleY };
+}
+
+const HANDLE_R = 9;
+const brushEraseBtn = document.getElementById('brushEraseBtn');
+const brushRestoreBtn = document.getElementById('brushRestoreBtn');
+const brushSizeSlider = document.getElementById('brushSizeSlider');
+const brushSizeVal = document.getElementById('brushSizeVal');
+brushSizeSlider.oninput = () => { brushSizeVal.textContent = brushSizeSlider.value; };
+
+function setBrushMode(mode) {
+  state.brushMode = (state.brushMode === mode) ? null : mode;
+  brushEraseBtn.classList.toggle('active', state.brushMode === 'erase');
+  brushRestoreBtn.classList.toggle('active', state.brushMode === 'restore');
+}
+brushEraseBtn.onclick = () => {
+  if (!state.selectedSurface) { alert('Select a surface first (click its tag on the photo).'); return; }
+  setBrushMode('erase');
+};
+brushRestoreBtn.onclick = () => {
+  if (!state.selectedSurface) { alert('Select a surface first (click its tag on the photo).'); return; }
+  setBrushMode('restore');
+};
+
+// A manually-marked surface has no per-pixel mask yet (just a quad) — give it
+// one on first brush stroke so touch-up has something to edit.
+function ensureMaskData(name) {
+  const s = state.surfaces[name];
+  if (!s || s.maskData) return;
+  const w = state.width, h = state.height;
+  const data = new Uint8Array(w * h);
+  const xs = s.points.map(p => p.x), ys = s.points.map(p => p.y);
+  const minX = Math.max(0, Math.floor(Math.min(...xs))), maxX = Math.min(w - 1, Math.ceil(Math.max(...xs)));
+  const minY = Math.max(0, Math.floor(Math.min(...ys))), maxY = Math.min(h - 1, Math.ceil(Math.max(...ys)));
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      if (pointInPolygon(x, y, s.points)) data[y * w + x] = 255;
+    }
+  }
+  s.maskData = data; s.maskW = w; s.maskH = h;
+}
+
+let renderQueued = false;
+function queueRender() {
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => { renderQueued = false; render(); });
+}
+
+function paintAt(p) {
+  const name = state.selectedSurface;
+  const s = state.surfaces[name];
+  if (!s) return;
+  ensureMaskData(name);
+  const r = parseInt(brushSizeSlider.value, 10);
+  const val = state.brushMode === 'erase' ? 0 : 255;
+  const w = state.width, h = state.height;
+  const minX = Math.max(0, Math.floor(p.x - r)), maxX = Math.min(w - 1, Math.ceil(p.x + r));
+  const minY = Math.max(0, Math.floor(p.y - r)), maxY = Math.min(h - 1, Math.ceil(p.y + r));
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      if ((x - p.x) ** 2 + (y - p.y) ** 2 <= r * r) s.maskData[y * w + x] = val;
+    }
+  }
+  queueRender();
+}
+
+overlayCanvas.addEventListener('mousedown', evt => {
+  const p = toCanvasCoords(evt);
+
+  if (state.brushMode && state.selectedSurface) {
+    state.painting = true;
+    paintAt(p);
+    return;
+  }
+
+  if (state.armed) {
+    if (state.tempPoints.length < 4) {
+      state.tempPoints.push(p);
+      if (state.tempPoints.length === 4) {
+        const ordered = orderCorners(state.tempPoints);
+        const defaults = getDefaultStyleFor(state.armed);
+        state.surfaces[state.armed] = {
+          points: ordered,
+          tileId: state.activeTileId,
+          repeats: defaults.repeats,
+          grout: defaults.grout,
+          blend: parseInt(blendSlider.value, 10) / 100
+        };
+        const justMarked = state.armed;
+        disarm();
+        state.selectedSurface = justMarked;
+        syncStyleControlsToSurface(justMarked);
+        renderSurfacesList();
+        render();
+        return;
+      }
+    }
+    drawOverlay();
+    return;
+  }
+
+  // not in marking mode -> first check if clicking a surface's label tag
+  for (const name of SURFACE_NAMES) {
+    const s = state.surfaces[name];
+    if (!s) continue;
+    const cx = s.points.reduce((a, pt) => a + pt.x, 0) / 4;
+    const cy = s.points.reduce((a, pt) => a + pt.y, 0) / 4;
+    if (Math.hypot(p.x - cx, p.y - cy) < 40) { selectSurface(name); return; }
+  }
+
+  // otherwise, check if clicking near an existing corner handle to drag it
+  for (const name of SURFACE_NAMES) {
+    const s = state.surfaces[name];
+    if (!s) continue;
+    for (let i = 0; i < 4; i++) {
+      const d = Math.hypot(p.x - s.points[i].x, p.y - s.points[i].y);
+      if (d < HANDLE_R * 2) { state.dragging = { surface: name, index: i }; return; }
+    }
+  }
+});
+
+overlayCanvas.addEventListener('mousemove', evt => {
+  if (state.painting && state.brushMode && state.selectedSurface) {
+    paintAt(toCanvasCoords(evt));
+    return;
+  }
+  if (state.dragging) {
+    const p = toCanvasCoords(evt);
+    const { surface, index } = state.dragging;
+    state.surfaces[surface].points[index] = p;
+    drawOverlay();
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  if (state.painting) { state.painting = false; render(); }
+  if (state.dragging) { state.dragging = null; render(); }
+});
+
+/* ---------- rendering ---------- */
+function render() {
+  if (!state.originalImageData) return;
+  const out = new ImageData(
+    new Uint8ClampedArray(state.originalImageData.data),
+    state.width, state.height
+  );
+
+  SURFACE_NAMES.forEach(name => {
+    const s = state.surfaces[name];
+    if (!s) return;
+    const tile = state.tiles.find(t => t.id === s.tileId);
+    if (!tile) return;
+    applySurfaceWarp(out, s, tile.img);
+  });
+
+  baseCtx.putImageData(out, 0, 0);
+  drawOverlay();
+  document.getElementById('downloadBtn').disabled = false;
+}
+
+function applySurfaceWarp(outImageData, surface, tileImg) {
+  const pts = surface.points;
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  const minX = Math.max(0, Math.floor(Math.min(...xs)));
+  const maxX = Math.min(state.width - 1, Math.ceil(Math.max(...xs)));
+  const minY = Math.max(0, Math.floor(Math.min(...ys)));
+  const maxY = Math.min(state.height - 1, Math.ceil(Math.max(...ys)));
+  if (maxX <= minX || maxY <= minY) return;
+
+  const bboxW = maxX - minX, bboxH = maxY - minY;
+  const tileCanvas = buildTiledCanvas(tileImg, bboxW, bboxH, surface.repeats, surface.grout);
+  const tileCtx = tileCanvas.getContext('2d');
+  const tileData = tileCtx.getImageData(0, 0, tileCanvas.width, tileCanvas.height);
+
+  const dstRect = [
+    { x: 0, y: 0 }, { x: tileCanvas.width, y: 0 },
+    { x: tileCanvas.width, y: tileCanvas.height }, { x: 0, y: tileCanvas.height }
+  ];
+  const H = getHomography(pts, dstRect);
+
+  const orig = state.originalImageData.data;
+  const ow = state.width;
+
+  // AI-detected surfaces carry a real per-pixel mask (follows furniture/window
+  // boundaries); manually-clicked surfaces only have the 4-point quad.
+  const hasMask = !!surface.maskData;
+  const inSurface = (x, y) => {
+    if (!pointInPolygon(x, y, pts)) return false;
+    if (!hasMask) return true;
+    return surface.maskData[y * surface.maskW + x] > 127;
+  };
+
+  // soft-edge sampling: averages a small window around (x,y) so the mask
+  // boundary blends smoothly instead of cutting hard pixel-by-pixel (this is
+  // what turns a jagged/speckled edge into a clean, anti-aliased one)
+  const FEATHER_R = 2;
+  function softAlpha(x, y) {
+    if (!hasMask) return pointInPolygon(x, y, pts) ? 1 : 0;
+    const mw = surface.maskW, mh = surface.maskH;
+    let sum = 0, count = 0;
+    for (let dy = -FEATHER_R; dy <= FEATHER_R; dy++) {
+      const yy = y + dy;
+      if (yy < 0 || yy >= mh) continue;
+      for (let dx = -FEATHER_R; dx <= FEATHER_R; dx++) {
+        const xx = x + dx;
+        if (xx < 0 || xx >= mw) continue;
+        sum += surface.maskData[yy * mw + xx];
+        count++;
+      }
+    }
+    return count ? (sum / count) / 255 : 0;
+  }
+
+  // pass 1: average luminance of the room's original pixels under this mask
+  let sum = 0, count = 0;
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      if (!inSurface(x, y)) continue;
+      const idx = (y * ow + x) * 4;
+      sum += luminance(orig[idx], orig[idx+1], orig[idx+2]);
+      count++;
+    }
+  }
+  const avgLum = count ? sum / count : 128;
+  const blend = surface.blend;
+
+  // pass 2: warp + relight + write, blended smoothly at the surface edge
+  const outData = outImageData.data;
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      if (!pointInPolygon(x, y, pts)) continue;
+      const alpha = softAlpha(x, y);
+      if (alpha <= 0.01) continue;
+      const { u, v } = applyHomography(H, x, y);
+      if (u < 0 || v < 0 || u >= tileCanvas.width || v >= tileCanvas.height) continue;
+
+      const [tr, tg, tb] = bilinearSample(tileData.data, tileCanvas.width, tileCanvas.height, u, v);
+
+      const idx = (y * ow + x) * 4;
+      const origLum = luminance(orig[idx], orig[idx+1], orig[idx+2]);
+      let factor = origLum / avgLum;
+      factor = Math.max(0.35, Math.min(1.75, factor));
+      factor = blend * factor + (1 - blend) * 1.0;
+
+      const nr = tr * factor, ng = tg * factor, nb = tb * factor;
+      outData[idx]   = outData[idx]   * (1 - alpha) + nr * alpha;
+      outData[idx+1] = outData[idx+1] * (1 - alpha) + ng * alpha;
+      outData[idx+2] = outData[idx+2] * (1 - alpha) + nb * alpha;
+      outData[idx+3] = 255;
+    }
+  }
+}
+
+function drawOverlay() {
+  overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+  SURFACE_NAMES.forEach(name => {
+    const s = state.surfaces[name];
+    if (!s) return;
+    drawQuad(s.points, SURFACE_COLORS[name], name, true, state.selectedSurface === name);
+  });
+
+  if (state.armed && state.tempPoints.length) {
+    drawQuad(state.tempPoints, SURFACE_COLORS[state.armed], null, false, false);
+  }
+}
+
+function drawQuad(pts, color, label, showHandles, isSelected) {
+  overlayCtx.strokeStyle = color;
+  overlayCtx.lineWidth = isSelected ? 3.5 : 2;
+  if (isSelected) {
+    overlayCtx.shadowColor = color;
+    overlayCtx.shadowBlur = 8;
+  }
+  overlayCtx.beginPath();
+  pts.forEach((p, i) => i === 0 ? overlayCtx.moveTo(p.x, p.y) : overlayCtx.lineTo(p.x, p.y));
+  if (pts.length === 4) overlayCtx.closePath();
+  overlayCtx.stroke();
+  overlayCtx.shadowBlur = 0;
+
+  pts.forEach(p => {
+    overlayCtx.beginPath();
+    overlayCtx.arc(p.x, p.y, showHandles ? HANDLE_R : 5, 0, Math.PI * 2);
+    overlayCtx.fillStyle = color;
+    overlayCtx.fill();
+    overlayCtx.strokeStyle = '#fff';
+    overlayCtx.lineWidth = 1.5;
+    overlayCtx.stroke();
+  });
+
+  if (label && pts.length === 4) {
+    const cx = pts.reduce((a, p) => a + p.x, 0) / 4;
+    const cy = pts.reduce((a, p) => a + p.y, 0) / 4;
+    overlayCtx.font = '600 13px -apple-system, sans-serif';
+    const text = label[0].toUpperCase() + label.slice(1);
+    const tw = overlayCtx.measureText(text).width;
+    overlayCtx.fillStyle = 'rgba(0,0,0,.65)';
+    overlayCtx.fillRect(cx - tw/2 - 8, cy - 11, tw + 16, 22);
+    overlayCtx.fillStyle = '#fff';
+    overlayCtx.textBaseline = 'middle';
+    overlayCtx.fillText(text, cx - tw/2, cy + 1);
+  }
+}
+
+/* ---------- surfaces list panel ---------- */
+function renderSurfacesList() {
+  const list = document.getElementById('surfacesList');
+  const defined = SURFACE_NAMES.filter(n => state.surfaces[n]);
+  if (!defined.length) {
+    list.innerHTML = '<div style="color:var(--text-dim);font-size:12.5px;">None yet — upload a room photo, pick a tile, then mark a surface.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  defined.forEach(name => {
+    const s = state.surfaces[name];
+    const tile = state.tiles.find(t => t.id === s.tileId);
+    const isSelected = state.selectedSurface === name;
+    const row = document.createElement('div');
+    row.className = 'surface-row' + (isSelected ? ' selected' : '');
+    const swatch = tile
+      ? `<img class="swatch" src="${tile.img.src}">`
+      : `<span class="swatch" style="display:flex;align-items:center;justify-content:center;background:${SURFACE_COLORS[name]}22;color:${SURFACE_COLORS[name]};font-size:10px;">·</span>`;
+    row.innerHTML = `
+      <div class="label">
+        ${swatch}
+        <span>${name[0].toUpperCase()+name.slice(1)}${isSelected ? ' · click a tile to apply' : ''}</span>
+      </div>
+      <button class="small danger-outline" data-name="${name}">Clear</button>
+    `;
+    row.querySelector('.label').onclick = () => selectSurface(name);
+    row.querySelector('button').onclick = (e) => {
+      e.stopPropagation();
+      delete state.surfaces[name];
+      if (state.selectedSurface === name) state.selectedSurface = null;
+      renderSurfacesList(); render();
+    };
+    list.appendChild(row);
+  });
+}
+
+/* ---------- AI auto-detect ---------- */
+const SERVER_URL = 'http://127.0.0.1:5000';
+const autoDetectBtn = document.getElementById('autoDetectBtn');
+
+function getOriginalBlob() {
+  return new Promise(resolve => {
+    const tmp = document.createElement('canvas');
+    tmp.width = state.width; tmp.height = state.height;
+    tmp.getContext('2d').putImageData(state.originalImageData, 0, 0);
+    tmp.toBlob(resolve, 'image/png');
+  });
+}
+
+function decodeMaskToArray(base64png, w, h) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const tmp = document.createElement('canvas');
+      tmp.width = w; tmp.height = h;
+      const ctx = tmp.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      const data = ctx.getImageData(0, 0, w, h).data;
+      const mask = new Uint8Array(w * h);
+      for (let i = 0; i < w * h; i++) mask[i] = data[i * 4]; // red channel, grayscale PNG
+      resolve(mask);
+    };
+    img.onerror = reject;
+    img.src = 'data:image/png;base64,' + base64png;
+  });
+}
+
+async function detectSurfaces({ silent = false } = {}) {
+  if (!state.roomImg) { if (!silent) alert('Upload a room photo first.'); return; }
+
+  if (!silent) {
+    autoDetectBtn.textContent = 'Detecting…';
+    autoDetectBtn.disabled = true;
+  }
+  hintText.textContent = 'Detecting wall / floor / ceiling…';
+
+  try {
+    const blob = await getOriginalBlob();
+    const form = new FormData();
+    form.append('image', blob, 'room.png');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), silent ? 2500 : 60000);
+    const res = await fetch(SERVER_URL + '/segment', { method: 'POST', body: form, signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) throw new Error('Server responded with ' + res.status);
+    const data = await res.json();
+    if (data.error) { if (!silent) alert('AI server: ' + data.error); updateHint(); return; }
+
+    // geometry (points + real pixel mask) is stored right away; tileId stays
+    // null until the user actually picks a tile — that's when it gets painted.
+    for (const name of SURFACE_NAMES) {
+      if (!data[name]) continue;
+      const { mask_png, quad, width, height } = data[name];
+      const maskData = await decodeMaskToArray(mask_png, width, height);
+      const points = quad.map(([x, y]) => ({ x, y }));
+      const defaults = getDefaultStyleFor(name);
+      state.surfaces[name] = {
+        points, tileId: state.activeTileId || null,
+        repeats: defaults.repeats, grout: defaults.grout,
+        blend: parseInt(blendSlider.value, 10) / 100,
+        maskData, maskW: width, maskH: height
+      };
+    }
+
+    state.selectedSurface = SURFACE_NAMES.find(n => state.surfaces[n]) || null;
+    if (state.selectedSurface) syncStyleControlsToSurface(state.selectedSurface);
+    renderSurfacesList();
+    render();
+    updateHint();
+  } catch (err) {
+    if (!silent) {
+      alert(
+        'Could not reach the AI server at ' + SERVER_URL + '.\n\n' +
+        'Make sure you ran "python server.py" in a terminal and left it running, ' +
+        'then try again.\n\nDetails: ' + err.message
+      );
+    } else {
+      console.log('[auto-detect skipped] AI server not reachable at', SERVER_URL, '— use manual "Mark" buttons, or start server.py and click "Auto-detect (AI)".');
+    }
+    updateHint();
+  } finally {
+    if (!silent) {
+      autoDetectBtn.textContent = '✨ Auto-detect (AI)';
+      autoDetectBtn.disabled = false;
+    }
+  }
+}
+
+autoDetectBtn.onclick = () => detectSurfaces({ silent: false });
+
+/* ---------- top-level actions ---------- */
+document.getElementById('resetAllBtn').onclick = () => {
+  state.surfaces = {}; disarm(); renderSurfacesList();
+  if (state.originalImageData) render();
+};
+
+document.getElementById('downloadBtn').onclick = () => {
+  const link = document.createElement('a');
+  link.download = 'room-visualizer-result.png';
+  link.href = baseCanvas.toDataURL('image/png');
+  link.click();
+};
+</script>
+</body>
+</html>
